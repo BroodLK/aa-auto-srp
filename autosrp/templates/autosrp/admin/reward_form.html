@@ -1,0 +1,130 @@
+{% extends 'autosrp/base.html' %}
+{% load i18n form_extras %}
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-10 col-xl-8">
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0">{% trans "Doctrine Reward" %}</h5>
+        </div>
+        <div class="card-body">
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+
+          <form method="post" novalidate id="rewardForm">
+            {% csrf_token %}
+
+            <div class="row g-3">
+              <div class="col-12">
+                <label for="id_doctrine_id" class="form-label">{% trans "Doctrine" %}</label>
+                {{ form.doctrine_id|add_class:"form-select" }}
+                {% if form.doctrine_id.help_text %}
+                <div class="form-text">{{ form.doctrine_id.help_text }}</div>
+                {% endif %}
+                {% if form.doctrine_id.errors %}
+                <div class="invalid-feedback d-block">{{ form.doctrine_id.errors|join:", " }}</div>
+                {% endif %}
+              </div>
+              <div class="col-12">
+                <label for="id_ship_type_id" class="form-label">{% trans "Ship (from doctrine fits)" %}</label>
+                {{ form.ship_type_id|add_class:"form-select" }}
+                {% if form.ship_type_id.errors %}
+                <div class="invalid-feedback d-block">{{ form.ship_type_id.errors|join:", " }}</div>
+                {% endif %}
+              </div>
+              <div class="col-12 col-md-6">
+                <label for="id_base_reward_isk" class="form-label">{{ form.base_reward_isk.label }}</label>
+                {{ form.base_reward_isk|add_class:"form-control" }}
+                {% if form.base_reward_isk.errors %}
+                <div class="invalid-feedback d-block">{{ form.base_reward_isk.errors|join:", " }}</div>
+                {% endif %}
+              </div>
+              <div class="col-12 col-md-6">
+                <label for="id_penalty_scheme" class="form-label">{{ form.penalty_scheme.label }}</label>
+                {{ form.penalty_scheme|add_class:"form-select" }}
+                {% if form.penalty_scheme.errors %}
+                <div class="invalid-feedback d-block">{{ form.penalty_scheme.errors|join:", " }}</div>
+                {% endif %}
+              </div>
+              <div class="col-12">
+                <label for="id_notes" class="form-label">{{ form.notes.label }}</label>
+                {{ form.notes|add_class:"form-control" }}
+                {% if form.notes.errors %}
+                <div class="invalid-feedback d-block">{{ form.notes.errors|join:", " }}</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-end gap-2 mt-4">
+              <a href="{% url 'autosrp:reward-list' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
+              <button class="btn btn-primary">{% trans "Save" %}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="text-muted small mt-3">
+        <i class="fa fa-info-circle me-1"></i>
+        {% trans "Select a doctrine to load available ships automatically from aa-fittings." %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const doctrineSelect = document.getElementById('id_doctrine_id');
+  const shipSelect = document.getElementById('id_ship_type_id');
+  const apiUrl = "{% url 'autosrp:api-doctrine-hulls' %}";
+
+  ensureClass(doctrineSelect, 'form-select');
+  ensureClass(shipSelect, 'form-select');
+
+  function setShipOptions(hulls, preserveValue) {
+    const prev = preserveValue ? shipSelect.value : "";
+    shipSelect.innerHTML = "";
+    const placeholder = document.createElement('option');
+    placeholder.value = "";
+    placeholder.textContent = hulls.length ? "— Select a ship —" : "— No fits for this doctrine —";
+    shipSelect.appendChild(placeholder);
+
+    hulls.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = String(h.id);
+      opt.textContent = h.name || ("Type " + h.id);
+      shipSelect.appendChild(opt);
+    });
+
+    if (preserveValue && prev) {
+      const found = Array.from(shipSelect.options).some(o => o.value === prev);
+      if (found) shipSelect.value = prev;
+    }
+  }
+
+  async function loadHullsForDoctrine(did, preserveValue=false) {
+    if (!did) { setShipOptions([], false); return; }
+    try {
+      const url = apiUrl + "?doctrine_id=" + encodeURIComponent(did);
+      const resp = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      if (!resp.ok) throw new Error("HTTP " + resp.status);
+      const data = await resp.json();
+      const hulls = Array.isArray(data?.hulls) ? data.hulls : [];
+      setShipOptions(hulls, preserveValue);
+    } catch (e) {
+      setShipOptions([], false);
+    }
+  }
+
+  if (doctrineSelect) {
+    const currentDid = doctrineSelect.value;
+    if (currentDid) loadHullsForDoctrine(currentDid, true);
+    doctrineSelect.addEventListener('change', (e) => {
+      shipSelect.value = "";
+      loadHullsForDoctrine(e.target.value, false);
+    });
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'autosrp/base.html' %}
+{% block content %}
+<div class="container py-3">
+  <h3>Auto SRP – Admin</h3>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Global Settings</h5>
+          {% if app %}
+            <ul class="list-group">
+              <li class="list-group-item">Default Duration: {{ app.default_duration_minutes }} min</li>
+            </ul>
+          {% else %}
+            <p>No AppSetting created yet. Use Django Admin to create one.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">Configure</h5>
+          <a class="btn btn-primary btn-sm" href="{% url 'autosrp:penalty-list' %}">Penalty Schemes</a>
+          <a class="btn btn-secondary btn-sm" href="{% url 'autosrp:reward-list' %}">Doctrine Rewards</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,5 +1,5 @@
-appname = example
-package = example
+appname = aa-auto-srp
+package = aa-auto-srp
 
 # Default goal
 .DEFAULT_GOAL := help

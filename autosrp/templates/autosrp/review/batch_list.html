@@ -1,0 +1,58 @@
+{% extends 'autosrp/base.html' %}
+{% load tz %}
+{% block content %}
+<div class="container py-3">
+  <table class="table table-sm">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>FC</th>
+            <th>Start</th>
+            <th>Duration</th>
+            <th>Systems</th>
+            <th>Doctrine</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+      {% for s in object_list %}
+      <tr>
+        <td>{{ s.id }}</td>
+        <td>{{ s.fc }}</td>
+        <td>{% timezone "UTC" %}{{ s.start_at|date:"Y-m-d H:i" }} UTC{% endtimezone %}</td>
+        <td>{{ s.duration_minutes }} min</td>
+        <td>
+          {% if s.system_names %}
+            {{ s.system_names|join:", " }}
+          {% elif s.systems %}
+            {{ s.systems|join:"," }}
+          {% else %}
+            Pending
+          {% endif %}
+        </td>
+        <td>
+          {% if s.doctrine_name %}
+            {{ s.doctrine_name }}
+          {% else %}
+            Doctrine {{ s.doctrine_id }}
+          {% endif %}
+        </td>
+        <td>{{ s.status }}</td>
+          <td><button class="btn btn-sm btn-outline-info"><a href="{% url 'autosrp:review_detail' s.id %}">Open</a></button></td>
+            {% if perms.autosrp.manage %}
+          <td>
+            <form method="post" action="{% url 'autosrp:delete_submission' s.id %}" onsubmit="return confirm('Delete this submission and all its kills?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+          </td>
+            {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="8">No submissions.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

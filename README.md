@@ -1,203 +1,137 @@
-# Example Plugin App for Alliance Auth (GitHub Version)<a name="example-plugin-app-for-alliance-auth-github-version"></a>
+# Auto SRP
 
-This is an example plugin app for [Alliance Auth](https://gitlab.com/allianceauth/allianceauth)
-(AA) that can be used as a starting point to develop custom plugins.
+![pypi latest version](https://img.shields.io/pypi/v/autosrp?label=latest)
+![python versions](https://img.shields.io/pypi/pyversions/autosrp)
+![django versions](https://img.shields.io/badge/django-3.2%2B-blue)
+![license](https://img.shields.io/badge/license-GPLv3-green)
 
-![License](https://img.shields.io/badge/license-GPLv3-green)
-![python](https://img.shields.io/badge/python-3.8-informational)
-![django](https://img.shields.io/badge/django-3.2-informational)
-![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)
+A streamlined Ship Replacement Program (SRP) management app for [AllianceAuth](https://gitlab.com/allianceauth/allianceauth).
 
-_(These badges are examples, you can and should replace them with your own)_
+## Contents
 
-For the GitLab version of this example app, please have a look over here, Erik
-Kalkoken was so friendly to provide it » [Alliance Auth Example App (GitLab Version)](https://gitlab.com/ErikKalkoken/allianceauth-example-plugin)
+- [Overview](#overview)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [Updating](#updating)
+- [Settings](#settings)
+- [Permissions](#permissions)
 
-______________________________________________________________________
+## Overview
 
-<!-- mdformat-toc start --slug=github --maxlevel=6 --minlevel=1 -->
+Auto SRP helps alliances and corporations manage ship replacement submissions, reviews,
+and payouts end to end. Automatically. Without user submissions.
 
-- [Example Plugin App for Alliance Auth (GitHub Version)](#example-plugin-app-for-alliance-auth-github-version)
-  - [Features](#features)
-  - [How to Use It](#how-to-use-it)
-    - [Cloning From Repo](#cloning-from-repo)
-    - [Renaming the App](#renaming-the-app)
-  - [Clearing Migrations](#clearing-migrations)
-  - [Writing Unit Tests](#writing-unit-tests)
-  - [Installing Into Your Dev AA](#installing-into-your-dev-aa)
-  - [Installing Into Production AA](#installing-into-production-aa)
-  - [Contribute](#contribute)
+## Key Features
 
-<!-- mdformat-toc end -->
+- FC-driven submissions
+  - Pilots do not submit losses, FCs (or users with the submit permission) create SRP reports.
+  - Automatic: paste a zKill “related” link or a **_(beta)_** EVE Tools BR link to auto-fill systems and time.
+  - Manual: specify systems and time window, the expected doctrine, and eligible alliances/corporations (org filter.
+    ![fc/Submit SRP](https://i.imgur.com/n7YZtFJ.gif)
+  - FCs have access to see reports they have submitted.
+    ![fc/My Submissions](https://i.imgur.com/jTVOYnf.png)
 
-______________________________________________________________________
+- Doctrine fit matching (https://gitlab.com/colcrunch/fittings)
+  - Losses are matched against doctrine fits automatically.
+  - Reviewers can change the selected fit and re-run the fit check at any time.
 
-## Features<a name="features"></a>
+- Payout calculation and overrides
+  - Suggested payouts are computed from base rewards (if configured, otherwise it uses market data) with configurable penalty schemes.
+  - Reviewers can override the payout per kill when needed.
+  - The application provides a detailed report of the match, including the doctrine, the fit, and the payout. Simply click details.
+    ![](https://i.imgur.com/otYHy7i.png)
 
-- The plugin can be installed, upgraded (and removed) into an existing AA
-  installation using PyInstaller.
-- It has its own menu item in the sidebar.
-- It has one view that shows a panel and some text
+- Review workflow
+  - Add or remove kills from a report, then approve or reject with optional comments.
+    ![](https://i.imgur.com/GxRTvlU.png)
+  - If the character is attached to the user in AA and they have Discord configured, the user will be notified on approval/rejection (including comments).
+    - Users can disable this notification on an individual level.
+      ![user/Discord](https://i.imgur.com/IrOJHRq.png)
 
-## How to Use It<a name="how-to-use-it"></a>
+- Configurable penalties
+  - Define penalty schemes (per-missing/wrong module), optionally include rigs/subsystems, and set a max cap.
+    ![](https://i.imgur.com/CgTS6SG.png)
 
-To use this example as a basis for your own development, just fork this repo and then
-clone it on your dev machine.
+- Flexible rewards
+  - Set base rewards per doctrine and ship, enabling fixed payouts independent of market prices.
+    ![](https://i.imgur.com/Z0hV5tM.png)
 
-You then should rename the app, and then you can install it into your AA dev
-installation.
+- Analytics
+  - Manager and user-level dashboards: submission counts, payouts, loss values, and trends.
+    ![](https://i.imgur.com/tBcJRTd.png)
+  - Users also have the same stats, but specific to them.
 
-### Cloning From Repo<a name="cloning-from-repo"></a>
+## Installation
 
-For this app, we're assuming that you have all your AA projects, your virtual
-environment, and your AA installation under one top folder (e.g. aa-dev).
+### 1. Install the app
 
-This should look something like this:
-
-```text
-aa-dev
-|- venv/
-|- myauth/
-|- aa-example-plugin
-|- (other AA projects ...)
-```
-
-Then just cd into the top folder (e.g. aa-dev) and clone the repo from your fork.
-You can give the repo a new name right away (e.g. `aa-your-app-name`). You also want
-to create a new git repo for it.
-Finally, enable [pre-commit](https://pre-commit.com) to enable automatic code style
-checking.
-
-```bash
-git clone https://github.com/YourName/aa-example-plugin.git aa-your-app-name
-cd aa-your-app-name
-rm -rf .git
-git init
-pre-commit install
-```
-
-### Renaming the App<a name="renaming-the-app"></a>
-
-Before installing this app into your dev AA you need to rename it to something
-suitable for your development project. Otherwise, you risk not being able to install
-additional apps that might also be called example.
-
-Here is an overview of the places that you need to edit to adopt the name.
-
-Easiest is to just find & replace `example` with your new app name in all files
-listed below.
-
-One small warning about picking names: Python is a bit particular about what special
-characters are allowed for names of modules and packages. To avoid any pitfalls, I
-would therefore recommend using only normal characters (a-z) in your app's name
-unless you know exactly what you're doing.
-
-| Location                                 | Description                                                                            |
-| ---------------------------------------- | -------------------------------------------------------------------------------------- |
-| `./example/`                             | Folder name                                                                            |
-| `./example/static/example/`              | Folder name                                                                            |
-| `./example/templates/example/`           | Folder name                                                                            |
-| `./pyproject.cfg`                        | Update module name for version import, update package name, update title, author, etc. |
-| `./example/apps.py`                      | App name                                                                               |
-| `./example/__init__.py`                  | App name                                                                               |
-| `./example/auth_hooks.py`                | Menu hook config incl. icon and label of your app's menu item appearing in the sidebar |
-| `./example/models.py`                    | App name                                                                               |
-| `./example/urls.py`                      | App name                                                                               |
-| `./example/views.py`                     | Permission name and template path                                                      |
-| `./example/templates/example/base.html`  | Title of your app to be shown in all views and as title in the browser tab             |
-| `./example/templates/example/index.html` | Template path                                                                          |
-| `./testauth/local.py`                    | App name in `PACKAGE` constant                                                         |
-| `./.coveragerc`                          | App name                                                                               |
-| `./MANIFEST.in`                          | App name                                                                               |
-| `./README.md`                            | Clear content                                                                          |
-| `./LICENSE`                              | Replace with your own license                                                          |
-| `./tox.ini`                              | App name                                                                               |
-| `./.isort.cfg`                           | App name for `import_heading_firstparty`                                               |
-| `./Makefile`                             | App name and package name                                                              |
-
-## Clearing Migrations<a name="clearing-migrations"></a>
-
-Instead of renaming your app in the migrations, it's easier to just recreate them
-later in the process. For this to work, you need to delete the old migration files in
-your `migrations` folder.
+Install into your AllianceAuth virtual environment via pip.
 
 ```bash
-rm your-app-name/migrations/0001_initial.py
-rm -rf your-app-name/migrations/_pycache
+pip install autosrp
 ```
 
-## Writing Unit Tests<a name="writing-unit-tests"></a>
+### 2. Configure AA settings
 
-Write your unit tests in `your-app-name/tests/` and make sure that you use a "test\_"
-prefix for files with your unit tests.
+- Add 'autosrp' to INSTALLED_APPS
+- Optionally, configure settings from the Settings section below to enable integrations and tune fit checking
 
-## Installing Into Your Dev AA<a name="installing-into-your-dev-aa"></a>
+### 3. Finalize install
 
-Once you've cloned or copied all files into place and finished renaming the app,
-you're ready to install it to your dev AA instance.
-
-Make sure you're in your venv. Then install it with pip in editable mode:
-
-```bash
-pip install -e aa-your-app-name
-```
-
-First add your app to the Django project by adding the name of your app to
-INSTALLED_APPS in `settings/local.py`.
-
-Next, we will create new migrations for your app:
-
-```bash
-python manage.py makemigrations
-```
-
-Then run a check to see if everything is set up correctly.
-
-```bash
-python manage.py check
-```
-
-In case they're errors make sure to fix them before proceeding.
-
-Next, perform migrations to add your model to the database:
+Run migrations and collect static files.
 
 ```bash
 python manage.py migrate
+python manage.py collectstatic --noinput
+```
+Then restart your AA services.
+
+Run the following command to create the initial item data.
+```bash
+python manage.py autosrp_preload_data
+```
+Once it has finished, you can create the initial price data.
+```bash
+python manage.py refresh_item_prices
 ```
 
-Finally, restart your AA server and that's it.
+## Configuring before use
+### 1. Configure Orgranization Filters (done only in the admin menu)
+#### 1.1 [99009902] or [99009902, 99009903]
+### 2. Configure Doctrine Base Awards If Needed
+### 3. Configure Penalties If Needed
 
-## Installing Into Production AA<a name="installing-into-production-aa"></a>
-
-To install your plugin into a production AA, run this command within the virtual
-Python environment of your AA installation:
+## Updating
 
 ```bash
-pip install git+https://github.com/YourName/aa-your-app-name
+pip install -U autosrp
 ```
+## Settings
 
-Alternatively, you can create a package file and manually upload it to your
-production AA:
+| Setting                              | Default                                 | Description                                                                                 |
+|--------------------------------------| --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| AUTOSRP_JANICE_API_KEY | ""                                      | Optional API key for Janice pricing lookups when available.                                  |
+| AUTOSRP_FITCHECK_IGNORE_CATEGORY_IDS | {8, 18, 20, 5}                          | Category IDs to ignore during doctrine/fit comparison.               |
+| AUTOSRP_FITCHECK_IGNORE_GROUP_NAMES  | {"Festival Launcher"}                   | Eve group names to ignore during doctrine/fit comparison.                                   |
 
+Integrations auto-detection:
+- AA Discordbot: enabled when the aadiscordbot app is installed
+- AA Discord Notify: enabled when the discordnotify app is installed
+- Discord Proxy: detected if discordproxy is installed and importable
+
+### Scheduled task for updating prices
 ```bash
-pip install build
-python -m build
+CELERYBEAT_SCHEDULE['autosrp_update_all_prices'] = {
+    'task': 'autosrp.services.services_update.update_all_prices',
+    'schedule': crontab(minute=0, hour=3, day_of_week='sun'),
+}
 ```
 
-You'll find the package under `./dist/aa-your-app-name.tar.gz` after this.
 
-Install your package directly from the package file:
+## Permissions
 
-```bash
-pip install aa-your-app-name.tar.gz
-```
-
-Then add your app to `INSTALLED_APPS` in `settings/local.py`, run migrations and
-restart your allianceserver.
-
-## Contribute<a name="contribute"></a>
-
-If you've made a new app for AA, please consider sharing it with the rest of the
-community. For any questions on how to share your app, please contact the AA devs on
-their Discord. You find the current community creations
-[here](https://gitlab.com/allianceauth/community-creations).
+| Permission           | Description                               |
+| -------------------- | ----------------------------------------- |
+| autosrp.manage       | Can manage Auto SRP settings.             |
+| autosrp.submit       | Can submit Auto SRP requests.             |
+| autosrp.review       | Can review Auto SRP batches.              |

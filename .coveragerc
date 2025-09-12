@@ -1,6 +1,6 @@
 [run]
 branch = True
-source = example
+source = autosrp
 
 [report]
 exclude_lines =

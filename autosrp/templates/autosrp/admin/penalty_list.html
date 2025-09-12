@@ -1,0 +1,45 @@
+{% extends 'autosrp/base.html' %}
+{% block content %}
+<div class="container py-3">
+    <h3>Penalty Schemes</h3>
+    {% if perms.autosrp.manage %}
+    <a class="btn btn-primary btn-sm" href="{% url 'autosrp:penalty-create' %}">New Scheme</a>
+    {% endif %}
+    <table class="table table-sm mt-3">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Per Wrong %</th>
+            <th>Max %</th>
+            <th>Default</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for s in object_list %}
+        <tr>
+            <td>{{ s.name }}</td>
+            <td>{{ s.per_wrong_module_pct }}</td>
+            <td>{{ s.max_total_deduction_pct }}</td>
+            <td>{{ s.is_default }}</td>
+
+            <td>{% if perms.autosrp.manage %}
+                <button class="btn btn-sm btn-outline-info"><a href="{% url 'autosrp:penalty-update' s.pk %}">edit</a></button>
+            </td>
+            <td>
+                <form method="post" action="{% url 'autosrp:penalty-delete' s.pk %}" onsubmit="return confirm('Delete this penalty scheme?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="5">No schemes yet.</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
