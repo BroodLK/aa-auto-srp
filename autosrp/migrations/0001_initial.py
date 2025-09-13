@@ -12,11 +12,6 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-        ('eveuniverse', '0011_extend_industry_activites'),
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-    ]
-
     operations = [
         migrations.CreateModel(
             name='OrgFilter',
