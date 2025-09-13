@@ -16,6 +16,9 @@
 
           <form method="post" novalidate id="penaltyForm">
             {% csrf_token %}
+            <div style="display:none;">
+              {{ form.per_wrong_module_pct }}
+            </div>
 
             <div class="row g-3">
               <div class="col-12">
@@ -126,7 +129,7 @@
 
             <div class="d-flex justify-content-end gap-2 mt-4">
               <a href="{% url 'autosrp:penalty-list' %}" class="btn btn-outline-secondary">{% trans "Cancel" %}</a>
-              <button class="btn btn-primary">{% trans "Save" %}</button>
+              <button type="submit" class="btn btn-primary">{% trans "Save" %}</button>
             </div>
           </form>
         </div>

@@ -2,8 +2,6 @@
 Handling Discord direct messages to a user
 """
 
-# pylint: disable=import-outside-toplevel, duplicate-code
-
 # Standard Library
 from datetime import datetime
 from enum import Enum
@@ -149,6 +147,17 @@ def _discordproxy_send_private_message(
         )
 
 
+def _resolve_discord_uid(user: User) -> int:
+    try:
+        from allianceauth.services.modules.discord.models import DiscordUser  # type: ignore
+        uid = DiscordUser.objects.filter(user=user).values_list("uid", flat=True).first()
+        if uid:
+            return int(uid)
+    except Exception:
+        pass
+
+    return 0
+
 def send_user_notification(
     user: User,
     title: str,
@@ -175,10 +184,9 @@ def send_user_notification(
     :rtype:
     """
 
-    if message["allianceauth"]:
-        getattr(notify, level)(user=user, title=title, message=message["allianceauth"])
+    if message.get("allianceauth"):
+        getattr(notify, level, notify.info)(user=user, title=title, message=message["allianceauth"])
 
-    # Respect per-user Discord preference; default to enabled if not present
     discord_pref_enabled = True
     try:
         setting = getattr(user, "discord_setting", None)
@@ -187,27 +195,34 @@ def send_user_notification(
     except Exception:
         discord_pref_enabled = True
 
-    # Handle Discord PMs when aa_discordnotify is not active
-    # Check if either allianceauth_discordbot or discordproxy are available
-    # to send the PM
-    if discord_pref_enabled and hasattr(user, "discord"):  # Check if the user has a Discord account
+    if not discord_pref_enabled:
+        return
 
-        # Check if discordnotify is active
-        if not aa_discordnotify_installed():
-            if discordproxy_installed():
 
-                _discordproxy_send_private_message(
-                    user_id=int(user.discord.uid),
-                    level=level,
-                    title=title,
-                    message=message["discord"],
-                    embed_message=embed_message,
-                )
+    uid = _resolve_discord_uid(user)
+    if uid <= 0 or not message.get("discord"):
+        return
+    try:
+        if discordproxy_installed():
+            _discordproxy_send_private_message(
+                user_id=uid,
+                level=level,
+                title=title,
+                message=message["discord"],
+                embed_message=embed_message,
+            )
+            return
+    except Exception:
+        pass
 
-                _aadiscordbot_send_private_message(
-                    user_id=int(user.discord.uid),
-                    level=level,
-                    title=title,
-                    message=message["discord"],
-                    embed_message=embed_message,
-                )
+    try:
+        if allianceauth_discordbot_installed():
+            _aadiscordbot_send_private_message(
+                user_id=uid,
+                level=level,
+                title=title,
+                message=message["discord"],
+                embed_message=embed_message,
+            )
+    except Exception:
+        pass

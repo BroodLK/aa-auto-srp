@@ -106,6 +106,9 @@ python manage.py refresh_item_prices
 ```bash
 pip install -U autosrp
 ```
+
+Run migrations and collectstatic.
+
 ## Settings
 
 | Setting                              | Default                                 | Description                                                                                 |

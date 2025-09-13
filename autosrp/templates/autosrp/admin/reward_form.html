@@ -79,6 +79,10 @@
   const shipSelect = document.getElementById('id_ship_type_id');
   const apiUrl = "{% url 'autosrp:api-doctrine-hulls' %}";
 
+  function ensureClass(el, cls) {
+    if (!el) return;
+    if (!el.classList.contains(cls)) el.classList.add(cls);
+  }
   ensureClass(doctrineSelect, 'form-select');
   ensureClass(shipSelect, 'form-select');
 
@@ -110,7 +114,7 @@
       const resp = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
       if (!resp.ok) throw new Error("HTTP " + resp.status);
       const data = await resp.json();
-      const hulls = Array.isArray(data?.hulls) ? data.hulls : [];
+      const hulls = Array.isArray(data && data.hulls) ? data.hulls : [];
       setShipOptions(hulls, preserveValue);
     } catch (e) {
       setShipOptions([], false);

@@ -182,7 +182,7 @@ def user_landing(request):
         form = DiscordSettingsForm(request.POST, instance=setting)
         if form.is_valid():
             form.save()
-            return redirect(reverse("user_landing"))
+            return redirect(reverse("autosrp:user_landing"))
     else:
         form = DiscordSettingsForm(instance=setting)
 
