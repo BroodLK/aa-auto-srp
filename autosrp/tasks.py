@@ -15,6 +15,30 @@ import logging
 log = logging.getLogger(__name__)
 
 
+def _ensure_system_entities(system_ids: set[int]) -> None:
+    try:
+        from eveuniverse.models import EveEntity, EveSolarSystem
+    except Exception:
+        return
+    if not system_ids:
+        return
+    try:
+        existing = set(EveEntity.objects.filter(id__in=system_ids).values_list("id", flat=True))
+        missing = [int(sid) for sid in system_ids if int(sid) not in existing]
+        if not missing:
+            return
+
+        rows = {int(r["id"]): (r.get("name") or str(r["id"])) for r in EveSolarSystem.objects.filter(id__in=missing).values("id", "name")}
+        to_create = []
+        for sid in missing:
+            name = rows.get(int(sid), str(sid))
+            to_create.append(EveEntity(id=int(sid), name=name))
+        if to_create:
+            EveEntity.objects.bulk_create(to_create, ignore_conflicts=True)
+    except Exception:
+        pass
+
+
 """ESI fetch helpers using providers only"""
 def _fetch_killmail_with_fallback(kill_id: int, kill_hash: str, timeout: int = 60) -> Optional[dict]:
     try:
@@ -327,6 +351,8 @@ def process_submission(self, submission_id: int):
         merged = sorted(existing_sys | sys_from_kills)
         if merged != list(sub.systems or []):
             sub.systems = merged
+
+        _ensure_system_entities(set(int(x) for x in merged))
     except Exception:
         pass
 
