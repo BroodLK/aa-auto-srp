@@ -34,20 +34,27 @@ def _remove_ignored_by_group(type_ids: list[int]) -> list[int]:
             "id", "eve_group__name", "eve_group__eve_category_id"
         )
     )
-    ignore_by_name = set(getattr(settings, "AUTOSRP_FITCHECK_IGNORE_GROUP_NAMES", {"Festival Launcher"}))
-    subsystem_category_id = 32
+
+    ignored_ids: set[int] = set()
+    try:
+        from autosrp.models import IgnoredModule
+        ignored_ids = {int(x) for x in IgnoredModule.objects.values_list("eve_type_id", flat=True)}
+    except Exception:
+        ignored_ids = set()
+
     found = {int(r["id"]) for r in rows}
     out: list[int] = []
 
     for r in rows:
         tid = int(r["id"])
-        gname = (r.get("eve_group__name") or "")
         cat = int(r.get("eve_group__eve_category_id") or 0)
-        if (gname in ignore_by_name) or (cat in IGNORE_CATEGORY_IDS and cat != subsystem_category_id):
+        if tid in ignored_ids:
+            continue
+        if cat in IGNORE_CATEGORY_IDS:
             continue
         out.append(tid)
 
-    out.extend([int(t) for t in type_ids if int(t) not in found])
+    out.extend([int(t) for t in type_ids if int(t) not in found and int(t) not in ignored_ids])
     return out
 
 
@@ -246,6 +253,50 @@ def _candidate_fits(doctrine_id: int, ship_type_id: int) -> list[Fitting]:
 
     return []
 
+def _get_penalty_scheme_for(doctrine_id: int, ship_type_id: int, doctrine_fit_id: int | None):
+    try:
+        from autosrp.models import DoctrineReward, PenaltyScheme
+        scheme = None
+        if doctrine_fit_id:
+            rec = DoctrineReward.objects.filter(doctrine_fit_id=int(doctrine_fit_id)).first()
+            if rec and rec.penalty_scheme:
+                scheme = rec.penalty_scheme
+        if scheme is None:
+            rec2 = DoctrineReward.objects.filter(doctrine_id=int(doctrine_id), ship_type_id=int(ship_type_id)).first()
+            if rec2 and rec2.penalty_scheme:
+                scheme = rec2.penalty_scheme
+        if scheme is None:
+            scheme = PenaltyScheme.objects.filter(is_default=True).first()
+        return scheme
+    except Exception:
+        return None
+
+
+def _cargo_type_ids_from_fit(fit: Fitting) -> set[int]:
+    try:
+        rows = FittingItem.objects.filter(fit=fit).values("flag", "type_id", "type_fk_id")
+    except Exception:
+        return set()
+    cargo: set[int] = set()
+    for it in rows:
+        flag_val = it.get("flag")
+        is_fitted = False
+        if isinstance(flag_val, int):
+            is_fitted = flag_val in FITTED_FLAGS
+        else:
+            s = str(flag_val or "").lower()
+            if s.startswith(("hislot", "medslot", "loslot", "rigslot", "subsystem")):
+                is_fitted = True
+        if is_fitted:
+            continue
+        raw = it.get("type_id") or it.get("type_fk_id") or 0
+        try:
+            tid = int(raw)
+        except Exception:
+            tid = 0
+        if tid:
+            cargo.add(tid)
+    return cargo
 
 def _best_fit(doctrine_id: int, ship_type_id: int, km_fitted_type_ids: Iterable[int] | dict, *, strict: bool) -> tuple[
     Optional[Fitting], dict]:
@@ -255,20 +306,86 @@ def _best_fit(doctrine_id: int, ship_type_id: int, km_fitted_type_ids: Iterable[
     actual = _fitted_from_km_ids(km_fitted_type_ids, strict=strict)
     scores = {}
     best = None
-    best_missing = None
+    best_key = None
     for f in candidates:
         ref = _fitted_from_fit(f, strict=strict)
         missing, extra = _diff(ref, actual)
         score_missing = len(missing)
         score_extra = len(extra)
+        score_total = score_missing + score_extra
         scores[f.id] = {
             ("strict_missing" if strict else "loose_missing"): score_missing,
             ("strict_extra" if strict else "loose_extra"): score_extra,
+            ("strict_total" if strict else "loose_total"): score_total,
         }
-        if best is None or score_missing < (best_missing or 10 ** 6):
+        cand_key = (score_total, score_missing, score_extra, int(f.id))
+        if best is None or cand_key < best_key:
             best = f
-            best_missing = score_missing
+            best_key = cand_key
     return best, scores
+
+
+def _loose_match_by_group(doctrine: Counter, actual: Counter) -> tuple[list[int], list[int]]:
+    if not doctrine:
+        return [], []
+
+    all_tids = set(int(t) for t in doctrine.keys()) | set(int(t) for t in actual.keys())
+
+    group_map: dict[int, int] = {}
+    if all_tids:
+        for tid, gid in EveType.objects.filter(id__in=all_tids).values_list("id", "eve_group_id"):
+            try:
+                group_map[int(tid)] = int(gid or 0)
+            except Exception:
+                group_map[int(tid)] = 0
+
+    need = Counter({int(k): int(v) for k, v in doctrine.items()})
+    have = Counter({int(k): int(v) for k, v in actual.items()})
+
+    from collections import deque
+    actual_by_group: dict[int, deque[tuple[int, int]]] = {}
+    for atid, qty in list(have.items()):
+        gid = int(group_map.get(int(atid), 0) or 0)
+        if gid <= 0 or qty <= 0:
+            continue
+        actual_by_group.setdefault(gid, deque()).append([int(atid), int(qty)])
+
+    missing: list[int] = []
+
+    for dtid, qty in list(need.items()):
+        if int(qty) <= 0:
+            continue
+        gid = int(group_map.get(int(dtid), 0) or 0)
+        if gid <= 0:
+            missing.extend([int(dtid)] * int(qty))
+            continue
+
+        remaining = int(qty)
+        bucket = actual_by_group.get(gid)
+        if not bucket:
+            missing.extend([int(dtid)] * remaining)
+            continue
+
+        while remaining > 0 and bucket:
+            t_actual, q_actual = bucket[0]
+            take = min(remaining, int(q_actual))
+            q_actual -= take
+            remaining -= take
+            if q_actual > 0:
+                bucket[0][1] = q_actual
+            else:
+                bucket.popleft()
+
+        if remaining > 0:
+            missing.extend([int(dtid)] * remaining)
+
+    extra: list[int] = []
+    for dq in actual_by_group.values():
+        for t_actual, q_left in dq:
+            if int(q_left) > 0:
+                extra.extend([int(t_actual)] * int(q_left))
+
+    return missing, extra
 
 
 def compare(doctrine_id: int, ship_type_id: int, km_fitted_type_ids: Iterable[int] | dict, strict_mode: bool) -> dict:
@@ -290,7 +407,16 @@ def compare(doctrine_id: int, ship_type_id: int, km_fitted_type_ids: Iterable[in
         ref = _fitted_from_fit(fit, strict=True)
         act = _fitted_from_km_ids(km_ids_flat, strict=True)
         missing, extra = _diff(ref, act)
-
+        try:
+            scheme = _get_penalty_scheme_for(doctrine_id, ship_type_id, fit.id)
+            if scheme and bool(getattr(scheme, "relax_substitutions_no_penalty", False)):
+                cargo_ids = _cargo_type_ids_from_fit(fit)
+                if cargo_ids:
+                    extra = [int(t) for t in extra if int(t) not in cargo_ids]
+                    if missing and all(int(t) in cargo_ids for t in missing):
+                        missing = []
+        except Exception:
+            pass
         d_bands = _band_counts_from_fit(fit)
         a_bands = _band_counts_from_km(km_fitted_type_ids)
         if a_bands is not None:
@@ -304,13 +430,24 @@ def compare(doctrine_id: int, ship_type_id: int, km_fitted_type_ids: Iterable[in
             ref_loose = _fitted_from_fit(fit, strict=False)
             act_loose = _fitted_from_km_ids(km_ids_flat, strict=False)
             m2, e2 = _diff(ref_loose, act_loose)
-            note = "Strict comparison failed on exact types; group-level (meta) match would pass." if len(m2) == 0 else ""
+            note = "Strict comparison failed on exact types; loose match would pass." if len(m2) == 0 else ""
         else:
             note = ""
     else:
-        ref = _fitted_from_fit(fit, strict=False)
-        act = _fitted_from_km_ids(km_ids_flat, strict=False)
-        missing, extra = _diff(ref, act)
+
+        ref_strict = _fitted_from_fit(fit, strict=True)
+        act_strict = _fitted_from_km_ids(km_ids_flat, strict=True)
+
+        missing, extra = _loose_match_by_group(ref_strict, act_strict)
+
+        try:
+            scheme = _get_penalty_scheme_for(doctrine_id, ship_type_id, fit.id)
+            if scheme and bool(getattr(scheme, "relax_substitutions_no_penalty", False)):
+                cargo_ids = _cargo_type_ids_from_fit(fit)
+                if cargo_ids and extra:
+                    extra = [int(t) for t in extra if int(t) not in cargo_ids]
+        except Exception:
+            pass
 
         d_bands = _band_counts_from_fit(fit)
         a_bands = _band_counts_from_km(km_fitted_type_ids)
@@ -319,7 +456,8 @@ def compare(doctrine_id: int, ship_type_id: int, km_fitted_type_ids: Iterable[in
             has_shortfall = any(d_bands.get(b, 0) > a_bands.get(b, 0) for b in bands_to_check)
             if not has_shortfall:
                 missing = []
-        passed = (len(missing) == 0)
+
+        passed = (len(missing) == 0 and len(extra) == 0)
         mode = "loose"
         note = ""
 
@@ -355,6 +493,16 @@ def compare_with_fit(doctrine_fit_id: int, ship_type_id: int, km_fitted_type_ids
         ref = _fitted_from_fit(fit, strict=True)
         act = _fitted_from_km_ids(km_ids_flat, strict=True)
         missing, extra = _diff(ref, act)
+        try:
+            scheme = _get_penalty_scheme_for(doctrine_id=0, ship_type_id=ship_type_id, doctrine_fit_id=fit.id)
+            if scheme and bool(getattr(scheme, "relax_substitutions_no_penalty", False)):
+                cargo_ids = _cargo_type_ids_from_fit(fit)
+                if cargo_ids:
+                    extra = [int(t) for t in extra if int(t) not in cargo_ids]
+                    if missing and all(int(t) in cargo_ids for t in missing):
+                        missing = []
+        except Exception:
+            pass
         d_bands = _band_counts_from_fit(fit)
         a_bands = _band_counts_from_km(km_fitted_type_ids)
         if a_bands is not None:
@@ -370,11 +518,21 @@ def compare_with_fit(doctrine_fit_id: int, ship_type_id: int, km_fitted_type_ids
             act_loose = _fitted_from_km_ids(km_ids_flat, strict=False)
             m2, _e2 = _diff(ref_loose, act_loose)
             if len(m2) == 0:
-                note = "Strict comparison failed on exact types; group-level (meta) match would pass."
+                note = "Strict comparison failed on exact types; variation-level (meta family) match would pass."
     else:
-        ref = _fitted_from_fit(fit, strict=False)
-        act = _fitted_from_km_ids(km_ids_flat, strict=False)
-        missing, extra = _diff(ref, act)
+        ref_strict = _fitted_from_fit(fit, strict=True)
+        act_strict = _fitted_from_km_ids(km_ids_flat, strict=True)
+        missing, extra = _loose_match_by_group(ref_strict, act_strict)
+
+        try:
+            scheme = _get_penalty_scheme_for(doctrine_id=0, ship_type_id=ship_type_id, doctrine_fit_id=fit.id)
+            if scheme and bool(getattr(scheme, "relax_substitutions_no_penalty", False)):
+                cargo_ids = _cargo_type_ids_from_fit(fit)
+                if cargo_ids and extra:
+                    extra = [int(t) for t in extra if int(t) not in cargo_ids]
+        except Exception:
+            pass
+
         d_bands = _band_counts_from_fit(fit)
         a_bands = _band_counts_from_km(km_fitted_type_ids)
         if a_bands is not None:
@@ -382,7 +540,8 @@ def compare_with_fit(doctrine_fit_id: int, ship_type_id: int, km_fitted_type_ids
             has_shortfall = any(d_bands.get(b, 0) > a_bands.get(b, 0) for b in bands_to_check)
             if not has_shortfall:
                 missing = []
-        passed = (len(missing) == 0)
+
+        passed = (len(missing) == 0 and len(extra) == 0)
         mode = "loose"
         note = ""
 

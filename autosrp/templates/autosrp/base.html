@@ -41,30 +41,15 @@
     {% endif %}
 
     {% if perms.autosrp.manage %}
-        <li class="nav-item dropdown">
-            <a class="btn btn-secondary dropdown-toggle me-2" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fa-solid fa-gear"></i>&nbsp;{% translate "Manage" %}
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end">
-                <li>
-                    <a class="dropdown-item" href="{% url 'autosrp:reward-list' %}">
-                        <i class="fa-solid fa-coins"></i>&nbsp;{% translate "Doctrine Rewards" %}
-                    </a>
-                </li>
-                <li>
-                    <a class="dropdown-item" href="{% url 'autosrp:penalty-list' %}">
-                        <i class="fa-solid fa-scale-balanced"></i>&nbsp;{% translate "Penalty Schemes" %}
-                    </a>
-                </li>
-            </ul>
-        </li>
+        {% with n=request.resolver_match.url_name %}
         <li class="nav-item">
-            <a class="btn btn-secondary me-2{% if n == 'admin-stats' %} active{% endif %}"
-               href="{% url 'autosrp:admin-stats' %}"
-               title="{% translate 'Stats' %}">
-                <i class="fa-solid fa-clipboard-check"></i>&nbsp;{% translate "Stats" %}
+            <a class="btn btn-secondary me-2{% if n == 'admin-home' %} active{% endif %}"
+               href="{% url 'autosrp:admin-home' %}"
+               title="{% translate 'Admin Settings' %}">
+                <i class="fa-solid fa-sliders"></i>&nbsp;{% translate "Admin Settings" %}
             </a>
         </li>
+        {% endwith %}
     {% endif %}
 {% endblock %}
 

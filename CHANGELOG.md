@@ -5,8 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [In Development] - Unreleased
-- Use items in a doctrine's cargo as "substitutes"
+## [0.0.3] - 2025-09-15
+
+### Fixed
+- Added maps to the preload command
+- "Loose" fitting mode was not working as intended, this has been fixed.
+- Adjustments to make the automatic fit detection check more accurate.
+
+### Changed
+- Doctrine Base Rewards adjusted to use Doctrine Fit ID instead of Ship ID, allowing multiple fits of the same ship to have different base rewards.
+- "Admin Settings" page made useful. Restylized.
+
+### Added
+- Added the ability for admins to disable Discord notifications for users.
+- Penalty Schemes now have an "Allow Substitutes" check box.
+  - If a doctrine has refits in the cargo, the fit check will use the items in the cargo as "allowed substitutes". (If enabled on the penalty scheme)
+- "Admin Settings" button added to the navbar
+- Ignored Modules are now managed via the "Admin Settings" page.
+  - Ignoring a module completely removes it from the fit check equations.
+- Button to toggle strict or loose fit check on a submitted battle report.
+- Click to copy to clipboard on Victim Name, Suggested and Actual payouts.
+
+### Removed
+- Removed the "Stats" button from the navbar
+- Removed the dropdown containing "Manage Penally" and "Manage Doctrine" from the navbar
 
 ## [0.0.2] - 2025-09-13
 

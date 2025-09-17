@@ -284,6 +284,7 @@ def process_submission(self, submission_id: int):
                 if hasattr(kr, "fitcheck"):
                     fc = kr.fitcheck
                     fc.doctrine_fit_id = dfid
+                    fc.mode = fc_result.get("mode", getattr(fc, "mode", "strict"))
                     fc.passed = fc_result["passed"]
                     fc.missing = fc_result["missing"]
                     fc.extra = fc_result["extra"]
@@ -294,6 +295,7 @@ def process_submission(self, submission_id: int):
                     FitCheck.objects.create(
                         kill=kr,
                         doctrine_fit_id=dfid,
+                        mode=fc_result.get("mode", "strict"),
                         passed=fc_result["passed"],
                         missing=fc_result["missing"],
                         extra=fc_result["extra"],

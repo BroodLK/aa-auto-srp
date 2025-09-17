@@ -16,6 +16,22 @@ def base_reward_for(doctrine_id: int, ship_type_id: int, app_settings, DoctrineR
     return Decimal("0.00"), (app_settings.default_penalty_scheme if app_settings else None)
 
 
+def base_reward_for_fit(
+    doctrine_id: int,
+    ship_type_id: int,
+    doctrine_fit_id: int | None,
+    app_settings,
+    DoctrineRewardModel,
+):
+    if doctrine_fit_id:
+        fit_rec = DoctrineRewardModel.objects.filter(doctrine_fit_id=int(doctrine_fit_id)).first()
+        if fit_rec:
+            return fit_rec.base_reward_isk, (fit_rec.penalty_scheme or (app_settings.default_penalty_scheme if app_settings else None))
+        return Decimal("0.00"), (app_settings.default_penalty_scheme if app_settings else None)
+
+    return base_reward_for(doctrine_id, ship_type_id, app_settings, DoctrineRewardModel)
+
+
 def hull_and_fit_prices(
     ship_type_id: int,
     fitted_type_ids: List[int] | dict,

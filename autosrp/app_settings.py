@@ -8,7 +8,6 @@ DISCORDPROXY_HOST = getattr(settings, "DISCORDPROXY_HOST", "localhost")
 DISCORDPROXY_TIMEOUT = getattr(settings, "DISCORDPROXY_TIMEOUT", 300)
 AUTOSRP_PRICE_JANICE_API_KEY = getattr(settings, "AUTOSRP_PRICE_JANICE_API_KEY", "")
 IGNORE_CATEGORY_IDS: set[int] = set(getattr(settings, "AUTOSRP_FITCHECK_IGNORE_CATEGORY_IDS", {8, 18, 20, 5}))
-IGNORE_GROUP_NAMES: set[str] = set(getattr(settings, "AUTOSRP_FITCHECK_IGNORE_GROUP_NAMES", {"Festival Launcher"}))
 
 def allianceauth_discordbot_installed() -> bool:
     return apps.is_installed(app_name="aadiscordbot")

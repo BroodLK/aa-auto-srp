@@ -21,6 +21,8 @@ A streamlined Ship Replacement Program (SRP) management app for [AllianceAuth](h
 Auto SRP helps alliances and corporations manage ship replacement submissions, reviews,
 and payouts end to end. Automatically. Without user submissions.
 
+**This project requires Fittings and EveUniverse to be installed.**
+
 ## Key Features
 
 - FC-driven submissions
@@ -115,7 +117,6 @@ Run migrations and collectstatic.
 |--------------------------------------| --------------------------------------- | ------------------------------------------------------------------------------------------- |
 | AUTOSRP_JANICE_API_KEY | ""                                      | Optional API key for Janice pricing lookups when available.                                  |
 | AUTOSRP_FITCHECK_IGNORE_CATEGORY_IDS | {8, 18, 20, 5}                          | Category IDs to ignore during doctrine/fit comparison.               |
-| AUTOSRP_FITCHECK_IGNORE_GROUP_NAMES  | {"Festival Launcher"}                   | Eve group names to ignore during doctrine/fit comparison.                                   |
 
 Integrations auto-detection:
 - AA Discordbot: enabled when the aadiscordbot app is installed
@@ -133,8 +134,8 @@ CELERYBEAT_SCHEDULE['autosrp_update_all_prices'] = {
 
 ## Permissions
 
-| Permission           | Description                               |
-| -------------------- | ----------------------------------------- |
-| autosrp.manage       | Can manage Auto SRP settings.             |
-| autosrp.submit       | Can submit Auto SRP requests.             |
-| autosrp.review       | Can review Auto SRP batches.              |
+| Permission     | Appearance in Admin  | Description                   |
+|----------------|----------------------|-------------------------------|
+| autosrp.manage | autosrp - submission | Can manage Auto SRP settings. |
+| autosrp.submit | autosrp - submission | Can submit Auto SRP requests. |
+| autosrp.review | autosrp - submission | Can review Auto SRP batches.  |

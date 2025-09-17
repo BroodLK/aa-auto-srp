@@ -92,4 +92,3 @@ def compute_penalty_pct(check, scheme) -> tuple[Decimal, dict]:
         capped = True
 
     return pct, {"wrong": wrong_total, "capped": capped}
-

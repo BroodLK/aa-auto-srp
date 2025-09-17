@@ -1,24 +1,19 @@
 from decimal import Decimal
 import csv
 import re
-import json
 from collections import Counter as _Counter
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import PermissionRequiredMixin
-from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse, Http404, HttpResponseBadRequest, JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+from django.http import HttpResponse, Http404, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404, redirect
 from django.template.loader import render_to_string
-from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_protect
 from django.utils.decorators import method_decorator
 from django.views.decorators.http import require_GET
 from django.views.generic import ListView, DetailView, View
-from django.db.models import Sum, Avg, Count, F, DecimalField, Q, ExpressionWrapper, Value
-from django.db.models.functions import Coalesce, TruncMonth
 
 from eveuniverse.models import EveEntity, EveType
 from fittings.models import Fitting, FittingItem
@@ -86,6 +81,12 @@ class BatchListView(PermissionRequiredMixin, ListView):
             except Exception:
                 s.doctrine_name = "Error"
 
+        for s in submissions:
+            try:
+                s.fit_mode_label = "Strict" if bool(getattr(s, "strict_mode", True)) else "Loose"
+            except Exception:
+                s.fit_mode_label = "Strict"
+
         return ctx
 
 
@@ -113,6 +114,65 @@ class BatchDetailView(PermissionRequiredMixin, DetailView):
         ctx["submission"] = submission
 
         kills = submission.kills.all().order_by("occurred_at")
+
+        try:
+            for kr in kills:
+                fc = getattr(kr, "fitcheck", None)
+                if not fc or fc.passed:
+                    continue
+
+                doctrine_fit_id = int(getattr(fc, "doctrine_fit_id", 0) or 0)
+                if doctrine_fit_id <= 0:
+                    continue
+
+                from fittings.models import FittingItem
+                def _band_for_flag(flag_val) -> str | None:
+                    if isinstance(flag_val, int):
+                        f = int(flag_val)
+                        if 27 <= f <= 34: return "high"
+                        if 19 <= f <= 26: return "mid"
+                        if 11 <= f <= 18: return "low"
+                        if 92 <= f <= 98: return "rig"
+                        return None
+                    s = str(flag_val or "").lower()
+                    if s.startswith("hislot"): return "high"
+                    if s.startswith("medslot"): return "mid"
+                    if s.startswith("loslot"): return "low"
+                    if s.startswith("rigslot"): return "rig"
+                    return None
+
+                d_bands = {"high": 0, "mid": 0, "low": 0, "rig": 0}
+                for it in FittingItem.objects.filter(fit_id=doctrine_fit_id).values("flag", "quantity"):
+                    b = _band_for_flag(it.get("flag"))
+                    if b:
+                        d_bands[b] += int(it.get("quantity") or 0) or 1
+
+                a_bands = None
+                ftids = getattr(kr, "fitted_type_ids", None)
+                if isinstance(ftids, dict):
+                    a_bands = {
+                        "high": len(ftids.get("high") or []),
+                        "mid": len(ftids.get("mid") or []),
+                        "low": len(ftids.get("low") or []),
+                        "rig": len(ftids.get("rig") or []),
+                    }
+
+                if a_bands is not None:
+                    has_shortfall = any(d_bands.get(b, 0) > a_bands.get(b, 0) for b in ("high", "mid", "low", "rig"))
+                    if not has_shortfall:
+                        km_payload = ftids if isinstance(ftids, dict) else []
+                        fc_result = fitcheck.compare(submission.doctrine_id, kr.ship_type_id, km_payload, submission.strict_mode)
+                        fc.doctrine_fit_id = int(fc_result.get("doctrine_fit_id") or 0)
+                        fc.mode = fc_result.get("mode") or fc.mode
+                        fc.passed = bool(fc_result.get("passed"))
+                        fc.missing = fc_result.get("missing") or []
+                        fc.extra = fc_result.get("extra") or []
+                        fc.substitutions = fc_result.get("substitutions") or {}
+                        fc.notes = fc_result.get("notes") or ""
+                        fc.save()
+        except Exception:
+            pass
+
         ctx["kills"] = kills
 
         system_ids = set()
@@ -434,7 +494,8 @@ class ReviewKillAddFromZkillView(PermissionRequiredMixin, View):
             flat_ids = []
 
         try:
-            fc_result = fitcheck.compare(submission.doctrine_id, kr.ship_type_id, flat_ids, submission.strict_mode)
+            km_payload = kr.fitted_type_ids if isinstance(kr.fitted_type_ids, dict) else flat_ids
+            fc_result = fitcheck.compare(submission.doctrine_id, kr.ship_type_id, km_payload, submission.strict_mode)
             dfid = fc_result["doctrine_fit_id"] or 0
 
             if hasattr(kr, "fitcheck"):
@@ -576,8 +637,13 @@ def kill_fit_detail(request, pk):
     actual_ids: list[int] = _normalize_id_list(kr.fitted_type_ids)
 
     IGNORE_CATEGORY_IDS: set[int] = set(getattr(settings, "AUTOSRP_FITCHECK_IGNORE_CATEGORY_IDS", {8, 18, 20, 5}))
-    IGNORE_GROUP_NAMES: set[str] = set(getattr(settings, "AUTOSRP_FITCHECK_IGNORE_GROUP_NAMES", {"Festival Launcher"}))
+    ignored_tids_for_slots: set[int] = set()
     SUBSYSTEM_CATEGORY_ID = 32
+    try:
+        from autosrp.models import IgnoredModule as _IM
+        ignored_tids_for_slots = {int(x) for x in _IM.objects.values_list("eve_type_id", flat=True)}
+    except Exception:
+        ignored_tids_for_slots = set()
 
     def _filter_ids_by_meta(ids_in: list[int]) -> list[int]:
         if not ids_in:
@@ -587,11 +653,8 @@ def kill_fit_detail(request, pk):
         keep: set[int] = set()
         for r in rows:
             tid = int(r["id"])
-            gname = (r.get("eve_group__name") or "").strip()
             cat = int(r.get("eve_group__eve_category_id") or 0)
-            if gname in IGNORE_GROUP_NAMES:
-                continue
-            if (cat in IGNORE_CATEGORY_IDS) and (cat != SUBSYSTEM_CATEGORY_ID):
+            if cat in IGNORE_CATEGORY_IDS:
                 continue
             keep.add(tid)
         out: list[int] = []
@@ -861,7 +924,56 @@ def kill_fit_detail(request, pk):
         if _av is not None:
             allowed_sub_actual_ids.add(int(_av))
 
+    matched_actual_remaining: _Counter = _Counter()
+    try:
+        if fc and getattr(fc, "mode", "strict") == "loose":
+            ref_ids_for_groups = set(actual_counter.keys()) | set(doctrine_counter.keys())
+            grp_map_rows = {
+                int(r["id"]): int(r.get("eve_group_id") or 0)
+                for r in EveType.objects.filter(id__in=list(ref_ids_for_groups)).values("id", "eve_group_id")
+            }
+            from collections import Counter as Ctr
+            need_by_group = Ctr(
+                int(grp_map_rows.get(int(t), 0)) for t, q in doctrine_counter.items() for _ in range(int(q)))
+            have_by_group = Ctr(
+                int(grp_map_rows.get(int(t), 0)) for t, q in actual_counter.items() for _ in range(int(q)))
+
+            from collections import defaultdict
+            actual_tids_by_group = defaultdict(list)
+            for tid, qty in actual_counter.items():
+                gid = int(grp_map_rows.get(int(tid), 0))
+                if gid > 0 and int(qty) > 0:
+                    actual_tids_by_group[gid].append([int(tid), int(qty)])
+
+            for gid, need_qty in list(need_by_group.items()):
+                if gid <= 0:
+                    continue
+                matched = min(int(need_qty), int(have_by_group.get(gid, 0)))
+                if matched <= 0:
+                    continue
+                bucket = actual_tids_by_group.get(gid, [])
+                i = 0
+                while matched > 0 and i < len(bucket):
+                    tid_i, q_i = bucket[i]
+                    take = min(matched, q_i)
+                    if take > 0:
+                        matched_actual_remaining[tid_i] += take
+                        q_i -= take
+                        matched -= take
+                        bucket[i][1] = q_i
+                    if q_i == 0:
+                        i += 1
+    except Exception:
+        matched_actual_remaining = _Counter()
+
     def _status_for_tid(tid: int) -> tuple[str, str]:
+        if int(tid) in ignored_tids_for_slots:
+            return "ignored", "Ignored by admin"
+        if fc and getattr(fc, "mode", "strict") == "loose":
+            rem = int(matched_actual_remaining.get(int(tid), 0))
+            if rem > 0:
+                matched_actual_remaining[int(tid)] = rem - 1
+                return "ok", "Group match (loose)"
         if int(tid) in allowed_sub_actual_ids:
             return "substitute", "Allowed substitution"
         if extra_remaining.get(int(tid), 0) > 0:
@@ -884,6 +996,7 @@ def kill_fit_detail(request, pk):
                         continue
 
             keep_ids: set[int] = set()
+            meta_rows = {}
             if all_ids_in_bands:
                 rows = list(EveType.objects.filter(id__in=all_ids_in_bands).values(
                     "id", "eve_group__name", "eve_group__eve_category_id"
@@ -892,8 +1005,7 @@ def kill_fit_detail(request, pk):
                     tid_i = int(r["id"])
                     gname_i = (r.get("eve_group__name") or "").strip()
                     cat_i = int(r.get("eve_group__eve_category_id") or 0)
-                    if gname_i in IGNORE_GROUP_NAMES:
-                        continue
+                    meta_rows[tid_i] = (gname_i, cat_i)
                     if (cat_i in IGNORE_CATEGORY_IDS) and (cat_i != SUBSYSTEM_CATEGORY_ID):
                         continue
                     keep_ids.add(tid_i)
@@ -1082,15 +1194,14 @@ class RerunFitCheckView(PermissionRequiredMixin, View):
         changed = 0
         for kr in kills:
             if isinstance(kr.fitted_type_ids, dict):
-                ids_for_compare = []
-                for key in ("high", "mid", "low", "rig", "sub"):
-                    ids_for_compare.extend(int(x) for x in (kr.fitted_type_ids.get(key) or []))
+                ids_for_compare = kr.fitted_type_ids
             else:
                 ids_for_compare = [int(x) for x in (kr.fitted_type_ids or [])]
 
-            forced = (request.POST.get(f"fit_for_{kr.id}") or "").strip()
+            forced_raw = (request.POST.get(f"fit_for_{kr.id}") or "").strip()
+
             try:
-                forced_id = int(forced) if forced else None
+                forced_id = int(forced_raw) if forced_raw else None
             except (TypeError, ValueError):
                 forced_id = None
 
@@ -1104,6 +1215,7 @@ class RerunFitCheckView(PermissionRequiredMixin, View):
             if hasattr(kr, "fitcheck"):
                 fc = kr.fitcheck
                 fc.doctrine_fit_id = dfid
+                fc.mode = fc_result.get("mode", getattr(fc, "mode", "strict"))
                 fc.passed = fc_result["passed"]
                 fc.missing = fc_result["missing"]
                 fc.extra = fc_result["extra"]
@@ -1114,6 +1226,7 @@ class RerunFitCheckView(PermissionRequiredMixin, View):
                 FitCheck.objects.create(
                     kill=kr,
                     doctrine_fit_id=dfid,
+                    mode=fc_result.get("mode", "strict"),
                     passed=fc_result["passed"],
                     missing=fc_result["missing"],
                     extra=fc_result["extra"],
@@ -1313,3 +1426,20 @@ class SaveKillStatusView(PermissionRequiredMixin, View):
 
         messages.success(request, f"Kill {target.killmail_id} marked as '{action}'.")
         return redirect("autosrp:review_detail", submission_id=submission_id)
+
+"""Toggle submission strict/loose mode and re-run fitcheck (manager only)"""
+class ToggleFitModeView(PermissionRequiredMixin, View):
+    permission_required = "autosrp.manage"
+
+    def post(self, request, submission_id: int):
+        sub = get_object_or_404(Submission, pk=submission_id)
+        new_mode = not bool(getattr(sub, "strict_mode", True))
+        sub.strict_mode = new_mode
+        try:
+            sub.save(update_fields=["strict_mode"])
+        except Exception:
+            sub.save()
+
+
+        messages.info(request, f"Fit check mode switched to {'Loose' if not new_mode else 'Strict'}. Re-running fit checks…")
+        return RerunFitCheckView.as_view()(request, submission_id=submission_id)

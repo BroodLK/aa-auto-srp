@@ -86,7 +86,7 @@
         <h6 class="mb-1">{% trans "Discrepancies (missing / extra modules)" %}</h6>
         <div class="small text-muted mb-2">
             {% if penalty_scheme_name %}{% trans "Scheme" %}: {{ penalty_scheme_name }} · {% endif %}
-            {% trans "Total penalty" %}: {{ penalty_total_pct|floatformat:2 }}%{% if penalty_capped %} ({% trans "capped" %}){% endif %}
+            {% trans "Total penalty" %}: {{ payout_penalty_pct|floatformat:2 }}%{% if penalty_capped %} ({% trans "capped" %}){% endif %}
             {% if penalty_wrong_count %} · {% trans "Wrong modules" %}: {{ penalty_wrong_count }}{% endif %}
         </div>
         <ul class="list-unstyled mb-0">

@@ -17,6 +17,9 @@ from datetime import timedelta
 from django.utils import timezone
 import json
 
+from eveuniverse.models import EveType
+from ..models import IgnoredModule
+
 from ..forms import PenaltyForm
 from ..models import (
     Submission,
@@ -81,76 +84,6 @@ def _hull_choices_for_doctrine(doctrine_id: int) -> list[tuple[int, str]]:
     return out
 
 
-"""Forms"""
-class RewardForm(forms.ModelForm):
-    doctrine_id = forms.ChoiceField(
-        choices=[("", "— Select a doctrine —")] + _doctrine_choices(),
-        label="Doctrine",
-        required=True,
-    )
-    ship_type_id = forms.ChoiceField(
-        choices=[("", "— Select a doctrine first —")],
-        label="Ship (from doctrine fits)",
-        required=True,
-    )
-
-    class Meta:
-        model = DoctrineReward
-        fields = ("doctrine_id", "ship_type_id", "base_reward_isk", "penalty_scheme", "notes")
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        selected_doctrine = None
-        data = self.data or None
-        if data and str(data.get("doctrine_id", "")).strip():
-            try:
-                selected_doctrine = int(data.get("doctrine_id"))
-            except (TypeError, ValueError):
-                selected_doctrine = None
-        elif getattr(self.instance, "doctrine_id", None):
-            selected_doctrine = int(self.instance.doctrine_id)
-
-        if selected_doctrine:
-            hull_choices = _hull_choices_for_doctrine(selected_doctrine) or []
-            if hull_choices:
-                self.fields["ship_type_id"].choices = [("", "— Select a ship —")] + [(str(a), b) for a, b in hull_choices]
-            else:
-                self.fields["ship_type_id"].choices = [("", "— No fits for this doctrine —")]
-        else:
-            self.fields["ship_type_id"].choices = [("", "— Select a doctrine first —")]
-
-        self.fields["doctrine_id"].coerce = int if hasattr(self.fields["doctrine_id"], "coerce") else None
-        self.fields["ship_type_id"].coerce = int if hasattr(self.fields["ship_type_id"], "coerce") else None
-
-        self.fields["base_reward_isk"].label = "Base Reward (ISK)"
-
-    def clean(self):
-        cleaned = super().clean()
-
-        try:
-            did = int(cleaned.get("doctrine_id"))
-        except Exception:
-            did = None
-        try:
-            sid = int(cleaned.get("ship_type_id"))
-        except Exception:
-            sid = None
-
-        if not did:
-            raise ValidationError({"doctrine_id": "Please select a doctrine."})
-        if not sid:
-            raise ValidationError({"ship_type_id": "Please select a ship for the selected doctrine."})
-
-        valid_hulls = {hid for hid, _ in _hull_choices_for_doctrine(did)}
-        if sid not in valid_hulls:
-            raise ValidationError({"ship_type_id": "Selected ship is not available in the chosen doctrine."})
-
-        cleaned["doctrine_id"] = did
-        cleaned["ship_type_id"] = sid
-        return cleaned
-
-
 """AJAX endpoints"""
 @require_GET
 def doctrine_hulls(request):
@@ -186,6 +119,148 @@ def doctrine_hulls(request):
     return JsonResponse({"hulls": hulls})
 
 
+@require_GET
+def doctrine_fits(request):
+    try:
+        did = int(request.GET.get("doctrine_id", 0) or 0)
+        sid = int(request.GET.get("ship_type_id", 0) or 0)
+    except (TypeError, ValueError):
+        return JsonResponse({"fits": []})
+
+    fits: list[dict] = []
+    if did > 0 and sid > 0:
+        try:
+            from fittings.models import Fitting
+            qs = (
+                Fitting.objects.filter(doctrines__id=did, ship_type_id=sid)
+                .values("id", "name")
+                .order_by("name", "id")
+            )
+            fits = [{"id": int(r["id"]), "name": (r["name"] or f"Fit {r['id']}")} for r in qs]
+        except Exception:
+            fits = []
+
+    return JsonResponse({"fits": fits})
+
+
+"""Forms"""
+class RewardForm(forms.ModelForm):
+    doctrine_id = forms.ChoiceField(
+        choices=[("", "— Select a doctrine —")] + _doctrine_choices(),
+        label="Doctrine",
+        required=True,
+    )
+    ship_type_id = forms.ChoiceField(
+        choices=[("", "— Select a doctrine first —")],
+        label="Ship (from doctrine fits)",
+        required=True,
+    )
+    doctrine_fit_id = forms.ChoiceField(
+        choices=[("", "— Select a ship first —")],
+        label="Fit",
+        required=True,
+    )
+
+    class Meta:
+        model = DoctrineReward
+        fields = ("doctrine_id", "ship_type_id", "doctrine_fit_id", "base_reward_isk", "penalty_scheme", "notes")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        selected_doctrine = None
+        data = self.data or None
+        if data and str(data.get("doctrine_id", "")).strip():
+            try:
+                selected_doctrine = int(data.get("doctrine_id"))
+            except (TypeError, ValueError):
+                selected_doctrine = None
+        elif getattr(self.instance, "doctrine_id", None):
+            selected_doctrine = int(self.instance.doctrine_id)
+
+        if selected_doctrine:
+            hull_choices = _hull_choices_for_doctrine(selected_doctrine) or []
+            if hull_choices:
+                self.fields["ship_type_id"].choices = [("", "— Select a ship —")] + [(str(a), b) for a, b in hull_choices]
+            else:
+                self.fields["ship_type_id"].choices = [("", "— No fits for this doctrine —")]
+        else:
+            self.fields["ship_type_id"].choices = [("", "— Select a doctrine first —")]
+
+        selected_ship = None
+        if data and str(data.get("ship_type_id", "")).strip():
+            try:
+                selected_ship = int(data.get("ship_type_id"))
+            except (TypeError, ValueError):
+                selected_ship = None
+        elif getattr(self.instance, "ship_type_id", None) and selected_doctrine:
+            selected_ship = int(self.instance.ship_type_id)
+
+        if selected_doctrine and selected_ship:
+            try:
+                from fittings.models import Fitting
+                rows = (
+                    Fitting.objects.filter(doctrines__id=selected_doctrine, ship_type_id=selected_ship)
+                    .values("id", "name")
+                    .order_by("name", "id")
+                )
+                fit_choices = [(str(int(r["id"])), (r["name"] or f"Fit {r['id']}")) for r in rows]
+                if fit_choices:
+                    self.fields["doctrine_fit_id"].choices = [("", "— Select a fit —")] + fit_choices
+                else:
+                    self.fields["doctrine_fit_id"].choices = [("", "— No fits for this ship —")]
+            except Exception:
+                self.fields["doctrine_fit_id"].choices = [("", "— No fits for this ship —")]
+        else:
+            self.fields["doctrine_fit_id"].choices = [("", "— Select a ship first —")]
+
+        self.fields["doctrine_id"].coerce = int if hasattr(self.fields["doctrine_id"], "coerce") else None
+        self.fields["ship_type_id"].coerce = int if hasattr(self.fields["ship_type_id"], "coerce") else None
+        self.fields["doctrine_fit_id"].coerce = int if hasattr(self.fields["doctrine_fit_id"], "coerce") else None
+
+        self.fields["base_reward_isk"].label = "Base Reward (ISK)"
+
+    def clean(self):
+        cleaned = super().clean()
+
+        try:
+            did = int(cleaned.get("doctrine_id"))
+        except Exception:
+            did = None
+        try:
+            sid = int(cleaned.get("ship_type_id"))
+        except Exception:
+            sid = None
+        try:
+            fid = int(cleaned.get("doctrine_fit_id"))
+        except Exception:
+            fid = None
+
+        if not did:
+            raise ValidationError({"doctrine_id": "Please select a doctrine."})
+        if not sid:
+            raise ValidationError({"ship_type_id": "Please select a ship."})
+        if not fid:
+            raise ValidationError({"doctrine_fit_id": "Please select a fit for the selected ship."})
+
+        valid_hulls = {hid for hid, _ in _hull_choices_for_doctrine(did)}
+        if sid not in valid_hulls:
+            raise ValidationError({"ship_type_id": "Selected ship is not available in the chosen doctrine."})
+
+        try:
+            from fittings.models import Fitting
+            exists = Fitting.objects.filter(doctrines__id=did, ship_type_id=sid, id=fid).exists()
+        except Exception:
+            exists = False
+        if not exists:
+            raise ValidationError({"doctrine_fit_id": "Selected fit is not part of the chosen doctrine and ship."})
+
+        cleaned["doctrine_id"] = did
+        cleaned["ship_type_id"] = sid
+        cleaned["doctrine_fit_id"] = fid
+        return cleaned
+
+
 """Views: settings and lists"""
 class SettingsHome(PermissionRequiredMixin, TemplateView):
     permission_required = "autosrp.manage"
@@ -193,8 +268,62 @@ class SettingsHome(PermissionRequiredMixin, TemplateView):
 
     def get_context_data(self, **kw):
         ctx = super().get_context_data(**kw)
-        ctx["app"] = AppSetting.objects.first()
+        app = AppSetting.objects.first()
+        if app is None:
+            try:
+                app = AppSetting.objects.create(active=True)
+            except Exception:
+                app = None
+        ctx["app"] = app
+
+        try:
+            ctx["penalty_schemes"] = list(PenaltyScheme.objects.all().values("id", "name"))
+        except Exception:
+            ctx["penalty_schemes"] = []
+
+        try:
+            from autosrp.models import IgnoredModule
+            ctx["ignored_count"] = int(IgnoredModule.objects.count())
+        except Exception:
+            ctx["ignored_count"] = 0
         return ctx
+
+    def post(self, request, **kw):
+        if not request.user.has_perm("autosrp.manage"):
+            return HttpResponseForbidden("You do not have permission to perform this action.")
+        app = AppSetting.objects.first()
+        if app is None:
+            app = AppSetting.objects.create(active=True)
+
+        active = bool(request.POST.get("active"))
+        ignore_capsules = bool(request.POST.get("ignore_capsules"))
+        discord_mute_all = bool(request.POST.get("discord_mute_all"))
+
+        try:
+            duration = int(request.POST.get("default_duration_minutes") or 0)
+            if duration <= 0:
+                duration = app.default_duration_minutes or 120
+        except Exception:
+            duration = app.default_duration_minutes or 120
+
+        dps_raw = (request.POST.get("default_penalty_scheme") or "").strip()
+        dps_obj = None
+        if dps_raw:
+            try:
+                dps_id = int(dps_raw)
+                dps_obj = PenaltyScheme.objects.filter(pk=dps_id).first()
+            except Exception:
+                dps_obj = None
+
+        app.active = active
+        app.default_duration_minutes = duration
+        app.ignore_capsules = ignore_capsules
+        app.discord_mute_all = discord_mute_all
+        app.default_penalty_scheme = dps_obj
+        app.save()
+
+        messages.success(request, "Updated application settings.")
+        return redirect("autosrp:admin-home")
 
 
 class PenaltyList(PermissionRequiredMixin, ListView):
@@ -239,16 +368,16 @@ class RewardList(PermissionRequiredMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         rewards = list(ctx.get("object_list", []))
 
-        doctrine_ids = {int(r.doctrine_id) for r in rewards if getattr(r, "doctrine_id", None)}
+        fit_ids = {int(r.doctrine_fit_id) for r in rewards if getattr(r, "doctrine_fit_id", None)}
         ship_ids = {int(r.ship_type_id) for r in rewards if getattr(r, "ship_type_id", None)}
 
-        doctrine_map = {}
+        fit_map = {}
         try:
-            from fittings.models import Doctrine
-            rows = Doctrine.objects.filter(id__in=doctrine_ids).values("id", "name")
-            doctrine_map = {int(r["id"]): (r["name"] or f"Doctrine {r['id']}") for r in rows}
+            from fittings.models import Fitting
+            rows = Fitting.objects.filter(id__in=fit_ids).values("id", "name")
+            fit_map = {int(r["id"]): (r["name"] or f"Fit {r['id']}") for r in rows}
         except Exception:
-            doctrine_map = {}
+            fit_map = {}
 
         type_map = {}
         try:
@@ -260,9 +389,9 @@ class RewardList(PermissionRequiredMixin, ListView):
 
         for r in rewards:
             try:
-                r.doctrine_name = doctrine_map.get(int(r.doctrine_id), f"Doctrine {int(r.doctrine_id)}")
+                r.fit_name = fit_map.get(int(r.doctrine_fit_id), f"Fit {int(r.doctrine_fit_id)}")
             except Exception:
-                r.doctrine_name = f"Doctrine {getattr(r, 'doctrine_id', '')}"
+                r.fit_name = f"Fit {getattr(r, 'doctrine_fit_id', '')}"
             try:
                 r.ship_name = type_map.get(int(r.ship_type_id), f"Type {int(r.ship_type_id)}")
             except Exception:
@@ -459,3 +588,51 @@ def stats(request):
         "status_values_json": json.dumps(status_values),
     }
     return render(request, "autosrp/admin/stats.html", context)
+
+
+class IgnoredModuleList(PermissionRequiredMixin, TemplateView):
+    permission_required = "autosrp.manage"
+    template_name = "autosrp/admin/ignored_list.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["items"] = list(IgnoredModule.objects.order_by("name").values("id", "name", "eve_type_id"))
+        return ctx
+
+    def post(self, request, **kwargs):
+        action = (request.POST.get("action") or "").strip()
+        if action == "add":
+            raw = (request.POST.get("eve_type_id") or "").strip()
+            try:
+                tid = int(raw)
+            except Exception:
+                return redirect("autosrp:ignored-modules")
+            row = EveType.objects.filter(id=tid).values("id", "name").first()
+            if not row:
+                return redirect("autosrp:ignored-modules")
+            IgnoredModule.objects.get_or_create(
+                eve_type_id=int(row["id"]),
+                defaults={"name": row["name"] or f"Type {row['id']}", "added_by": request.user},
+            )
+            return redirect("autosrp:ignored-modules")
+        elif action == "delete":
+            try:
+                pk = int(request.POST.get("id") or 0)
+                IgnoredModule.objects.filter(id=pk).delete()
+            except Exception:
+                pass
+            return redirect("autosrp:ignored-modules")
+        return redirect("autosrp:ignored-modules")
+
+
+@require_GET
+def api_search_modules(request):
+    q = (request.GET.get("q") or "").strip()
+    if not q or len(q) < 2:
+        return JsonResponse({"items": []})
+    rows = (
+        EveType.objects.filter(name__icontains=q)
+        .values("id", "name")[:25]
+    )
+    items = [{"id": int(r["id"]), "name": r["name"]} for r in rows]
+    return JsonResponse({"items": items})

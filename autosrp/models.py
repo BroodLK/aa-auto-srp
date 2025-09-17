@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -23,6 +24,11 @@ class ItemPrices(models.Model):
     sell = models.DecimalField(max_digits=20, decimal_places=2)
     updated = models.DateTimeField()
 
+    class Meta:
+        verbose_name = "Item Price"
+        verbose_name_plural = "Item Prices"
+        ordering = ["-updated"]
+
     def __str__(self):
         name = getattr(getattr(self, "eve_type", None), "name", None)
         return f"{name or self.eve_type_id} — sell:{self.sell} buy:{self.buy}"
@@ -38,6 +44,11 @@ class PenaltyScheme(models.Model):
     relax_substitutions_no_penalty = models.BooleanField(default=True)
     max_total_deduction_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("50.00"))
     is_default = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = "Penalty Scheme"
+        verbose_name_plural = "Penalty Schemes"
+
     def __str__(self):
         return self.name
 
@@ -48,15 +59,26 @@ class DoctrineReward(models.Model):
     base_reward_isk = models.DecimalField(max_digits=18, decimal_places=2)
     penalty_scheme = models.ForeignKey(PenaltyScheme, null=True, blank=True, on_delete=models.SET_NULL)
     notes = models.CharField(max_length=200, blank=True, default="")
+    doctrine_fit_id = models.PositiveIntegerField(db_index=True, default=1)
+
     class Meta:
-        unique_together = ("doctrine_id", "ship_type_id")
+        verbose_name = "Base Reward"
+        verbose_name_plural = "Base Rewards"
+        constraints = [
+            models.UniqueConstraint(fields=["doctrine_fit_id"], name="unique_reward_per_doctrine_fit"),
+        ]
 
 
 class AppSetting(models.Model):
     active = models.BooleanField(default=True)
     default_penalty_scheme = models.ForeignKey(PenaltyScheme, null=True, on_delete=models.SET_NULL)
-    default_duration_minutes = models.PositiveIntegerField(default=120)
+    default_duration_minutes = models.PositiveIntegerField(default=120, help_text="Default duration in minutes for new battle reports.")
     ignore_capsules = models.BooleanField(default=True, help_text="If enabled, kills where the victim was in a capsule are ignored.")
+    discord_mute_all = models.BooleanField(default=False, help_text="If enabled, all users will be not receive notifications in Discord.")
+
+    class Meta:
+        verbose_name = "App Setting"
+        verbose_name_plural = "App Settings"
 
 
 class OrgFilter(models.Model):
@@ -64,6 +86,11 @@ class OrgFilter(models.Model):
     alliance_ids = models.JSONField(default=list, blank=True)
     corporation_ids = models.JSONField(default=list, blank=True)
     is_default = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Organization Filter"
+        verbose_name_plural = "Organization Filters"
+        ordering = ["name"]
 
     def __str__(self) -> str:
         return (self.name or "").strip() or f"OrgFilter #{self.pk}"
@@ -82,6 +109,9 @@ class Submission(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(null=True, blank=True)
     class Meta:
+        verbose_name = "Battle Report"
+        verbose_name_plural = "Battle Reports"
+        ordering = ["-created"]
         permissions = [
             ("manage",  "Can manage Auto SRP settings"),
             ("submit",  "Can submit Auto SRP requests"),
@@ -115,6 +145,10 @@ class KillRecord(models.Model):
     )
     status_comment = models.TextField(blank=True, default="")
 
+    class Meta:
+        verbose_name = "Kill Record"
+        verbose_name_plural = "Kill Records"
+
 
 class FitCheck(models.Model):
     kill = models.OneToOneField(
@@ -131,6 +165,11 @@ class FitCheck(models.Model):
     notes = models.TextField(blank=True, default="")
 
 
+    class Meta:
+        verbose_name = "Fit Check"
+        verbose_name_plural = "Fit Checks"
+
+
 class PayoutSuggestion(models.Model):
     kill = models.OneToOneField(KillRecord, on_delete=models.CASCADE, related_name="payout")
     base_reward_isk = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"))
@@ -140,6 +179,10 @@ class PayoutSuggestion(models.Model):
     hull_price_isk = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"))
     fit_price_isk = models.DecimalField(max_digits=18, decimal_places=2, default=Decimal("0.00"))
     override_isk = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Payout Suggestion"
+        verbose_name_plural = "Payout Suggestions"
 
     @property
     def final_isk(self):
@@ -152,6 +195,10 @@ class PayoutRecord(models.Model):
     system_id = models.BigIntegerField(default=0)
     system_name = models.CharField(max_length=120, blank=True, default="")
 
+    class Meta:
+        verbose_name = "Payout Record"
+        verbose_name_plural = "Payout Records"
+
     def __str__(self) -> str:
         return f"PayoutRecord(kill={self.kill_id}, actual={self.actual_isk})"
 
@@ -161,8 +208,25 @@ class DiscordNotificationSetting(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = "User Setting"
+        verbose_name_plural = "User Settings"
+
     def __str__(self) -> str:
         return f"DiscordNotificationSetting(user={self.user_id}, enabled={self.discord_enabled})"
+
+class IgnoredModule(models.Model):
+    eve_type_id = models.BigIntegerField(unique=True)
+    name = models.CharField(max_length=255, db_index=True)
+    added_by = models.ForeignKey(get_user_model(), null=True, blank=True, on_delete=models.SET_NULL)
+    added_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Ignored Module"
+        verbose_name_plural = "Ignored Modules"
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.eve_type_id})"
 
 @receiver(post_save, sender=get_user_model())
 def create_discord_setting_for_user(sender, instance, created, **kwargs):

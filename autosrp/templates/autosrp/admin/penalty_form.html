@@ -57,7 +57,7 @@
                 {% endif %}
               </div>
 
-              <div class="col-12 col-md-6">
+              <div class="col-12 col-md-4">
                 <div class="form-check mt-2">
                   {{ form.count_rigs|add_class:"form-check-input" }}
                   <label for="id_count_rigs" class="form-check-label">{{ form.count_rigs.label }}</label>
@@ -70,7 +70,7 @@
                 {% endif %}
               </div>
 
-              <div class="col-12 col-md-6">
+              <div class="col-12 col-md-4">
                 <div class="form-check mt-2">
                   {{ form.count_subsystems|add_class:"form-check-input" }}
                   <label for="id_count_subsystems" class="form-check-label">{{ form.count_subsystems.label }}</label>
@@ -83,22 +83,21 @@
                 {% endif %}
               </div>
 
-<!--                Soon(tm)-->
-<!--              <div class="col-12 col-md-4">-->
-<!--                <div class="form-check mt-2">-->
-<!--                  {{ form.relax_substitutions_no_penalty|add_class:"form-check-input" }}-->
-<!--                  <label for="id_relax_substitutions_no_penalty" class="form-check-label">-->
-<!--                    {{ form.relax_substitutions_no_penalty.label }}-->
-<!--                  </label>-->
-<!--                </div>-->
-<!--                <div class="form-text">-->
-<!--                  When enabled, modules explicitly allowed as substitutions do not incur penalties.-->
-<!--                  This relaxes strict doctrine matching for approved alternatives.-->
-<!--                </div>-->
-<!--                {% if form.relax_substitutions_no_penalty.errors %}-->
-<!--                <div class="invalid-feedback d-block">{{ form.relax_substitutions_no_penalty.errors|join:", " }}</div>-->
-<!--                {% endif %}-->
-<!--              </div>-->
+              <div class="col-12 col-md-4">
+                <div class="form-check mt-2">
+                  {{ form.relax_substitutions_no_penalty|add_class:"form-check-input" }}
+                  <label for="id_relax_substitutions_no_penalty" class="form-check-label">
+                    {{ form.relax_substitutions_no_penalty.label }}
+                  </label>
+                </div>
+                <div class="form-text">
+                  When enabled, modules explicitly allowed as substitutions (listed as cargo in the Fittings app) do not incur penalties.
+                  This relaxes strict doctrine matching for approved alternatives.
+                </div>
+                {% if form.relax_substitutions_no_penalty.errors %}
+                <div class="invalid-feedback d-block">{{ form.relax_substitutions_no_penalty.errors|join:", " }}</div>
+                {% endif %}
+              </div>
 
               <div class="col-12 col-md-6">
                 <label for="id_max_total_deduction_pct" class="form-label">{{ form.max_total_deduction_pct.label }}</label>

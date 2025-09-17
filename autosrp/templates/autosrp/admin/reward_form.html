@@ -34,6 +34,13 @@
                 <div class="invalid-feedback d-block">{{ form.ship_type_id.errors|join:", " }}</div>
                 {% endif %}
               </div>
+              <div class="col-12">
+                <label for="id_doctrine_fit_id" class="form-label">{% trans "Fit" %}</label>
+                {{ form.doctrine_fit_id|add_class:"form-select" }}
+                {% if form.doctrine_fit_id.errors %}
+                <div class="invalid-feedback d-block">{{ form.doctrine_fit_id.errors|join:", " }}</div>
+                {% endif %}
+              </div>
               <div class="col-12 col-md-6">
                 <label for="id_base_reward_isk" class="form-label">{{ form.base_reward_isk.label }}</label>
                 {{ form.base_reward_isk|add_class:"form-control" }}
@@ -67,7 +74,7 @@
 
       <div class="text-muted small mt-3">
         <i class="fa fa-info-circle me-1"></i>
-        {% trans "Select a doctrine to load available ships automatically from aa-fittings." %}
+        {% trans "Rewards are configured for a specific fit in a doctrine." %}
       </div>
     </div>
   </div>
@@ -77,7 +84,9 @@
 (function(){
   const doctrineSelect = document.getElementById('id_doctrine_id');
   const shipSelect = document.getElementById('id_ship_type_id');
-  const apiUrl = "{% url 'autosrp:api-doctrine-hulls' %}";
+  const fitSelect = document.getElementById('id_doctrine_fit_id');
+  const hullsApi = "{% url 'autosrp:api-doctrine-hulls' %}";
+  const fitsApi = "{% url 'autosrp:api-doctrine-fits' %}";
 
   function ensureClass(el, cls) {
     if (!el) return;
@@ -85,48 +94,64 @@
   }
   ensureClass(doctrineSelect, 'form-select');
   ensureClass(shipSelect, 'form-select');
+  ensureClass(fitSelect, 'form-select');
 
-  function setShipOptions(hulls, preserveValue) {
-    const prev = preserveValue ? shipSelect.value : "";
-    shipSelect.innerHTML = "";
-    const placeholder = document.createElement('option');
-    placeholder.value = "";
-    placeholder.textContent = hulls.length ? "— Select a ship —" : "— No fits for this doctrine —";
-    shipSelect.appendChild(placeholder);
-
-    hulls.forEach(h => {
+  function setOptions(select, items, placeholder) {
+    const prev = select.value;
+    select.innerHTML = "";
+    const ph = document.createElement('option');
+    ph.value = "";
+    ph.textContent = placeholder;
+    select.appendChild(ph);
+    items.forEach(it => {
       const opt = document.createElement('option');
-      opt.value = String(h.id);
-      opt.textContent = h.name || ("Type " + h.id);
-      shipSelect.appendChild(opt);
+      opt.value = String(it.id);
+      opt.textContent = it.name || ("#" + it.id);
+      select.appendChild(opt);
     });
+    const found = Array.from(select.options).some(o => o.value === prev);
+    if (found) select.value = prev;
+  }
 
-    if (preserveValue && prev) {
-      const found = Array.from(shipSelect.options).some(o => o.value === prev);
-      if (found) shipSelect.value = prev;
+  async function loadHullsForDoctrine(did) {
+    if (!did) { setOptions(shipSelect, [], "— Select a doctrine first —"); setOptions(fitSelect, [], "— Select a ship first —"); return; }
+    try {
+      const url = hullsApi + "?doctrine_id=" + encodeURIComponent(did);
+      const resp = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
+      const data = await resp.json();
+      const hulls = Array.isArray(data && data.hulls) ? data.hulls : [];
+      setOptions(shipSelect, hulls, hulls.length ? "— Select a ship —" : "— No fits for this doctrine —");
+      setOptions(fitSelect, [], "— Select a ship first —");
+    } catch {
+      setOptions(shipSelect, [], "— Select a doctrine first —");
+      setOptions(fitSelect, [], "— Select a ship first —");
     }
   }
 
-  async function loadHullsForDoctrine(did, preserveValue=false) {
-    if (!did) { setShipOptions([], false); return; }
+  async function loadFits(did, sid) {
+    if (!did || !sid) { setOptions(fitSelect, [], "— Select a ship first —"); return; }
     try {
-      const url = apiUrl + "?doctrine_id=" + encodeURIComponent(did);
+      const url = fitsApi + "?doctrine_id=" + encodeURIComponent(did) + "&ship_type_id=" + encodeURIComponent(sid);
       const resp = await fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}});
-      if (!resp.ok) throw new Error("HTTP " + resp.status);
       const data = await resp.json();
-      const hulls = Array.isArray(data && data.hulls) ? data.hulls : [];
-      setShipOptions(hulls, preserveValue);
-    } catch (e) {
-      setShipOptions([], false);
+      const fits = Array.isArray(data && data.fits) ? data.fits : [];
+      setOptions(fitSelect, fits, fits.length ? "— Select a fit —" : "— No fits for this ship —");
+    } catch {
+      setOptions(fitSelect, [], "— Select a ship first —");
     }
   }
 
   if (doctrineSelect) {
-    const currentDid = doctrineSelect.value;
-    if (currentDid) loadHullsForDoctrine(currentDid, true);
     doctrineSelect.addEventListener('change', (e) => {
       shipSelect.value = "";
-      loadHullsForDoctrine(e.target.value, false);
+      fitSelect.value = "";
+      loadHullsForDoctrine(e.target.value);
+    });
+  }
+  if (shipSelect) {
+    shipSelect.addEventListener('change', (e) => {
+      fitSelect.value = "";
+      loadFits(doctrineSelect.value, e.target.value);
     });
   }
 })();

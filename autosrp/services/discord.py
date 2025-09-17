@@ -165,27 +165,16 @@ def send_user_notification(
     embed_message: bool = True,
     level: str = "info",
 ) -> None:
-    """
-    Send notification to user
-    This creates a notification in Auth and a PM in Discord when either
-    Discordproxy, AA-Discordbot or AA Discord Notifications is installed
-
-    :param user:
-    :type user:
-    :param title:
-    :type title:
-    :param message:
-    :type message:
-    :param embed_message:
-    :type embed_message:
-    :param level:
-    :type level:
-    :return:
-    :rtype:
-    """
-
     if message.get("allianceauth"):
         getattr(notify, level, notify.info)(user=user, title=title, message=message["allianceauth"])
+
+    try:
+        from autosrp.models import AppSetting
+        app = AppSetting.objects.first()
+        if app and getattr(app, "discord_mute_all", False):
+            return
+    except Exception:
+        pass
 
     discord_pref_enabled = True
     try:
@@ -197,7 +186,6 @@ def send_user_notification(
 
     if not discord_pref_enabled:
         return
-
 
     uid = _resolve_discord_uid(user)
     if uid <= 0 or not message.get("discord"):
