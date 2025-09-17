@@ -51,6 +51,7 @@
                             <span class="badge bg-secondary">{{ s.status|default:"unknown" }}</span>
                         </td>
                         <td class="text-end">
+                          <div class="d-inline-flex gap-1">
                             <a href="{% url 'autosrp:review_detail' s.id %}" class="btn btn-outline-primary btn-sm">
                                 {% trans "Open" %}
                             </a>
@@ -65,6 +66,7 @@
                                 </button>
                             </form>
                             {% endif %}
+                          </div>
                         </td>
                     </tr>
                     {% empty %}
