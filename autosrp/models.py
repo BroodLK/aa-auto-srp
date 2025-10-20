@@ -113,6 +113,7 @@ class Submission(models.Model):
         verbose_name_plural = "Battle Reports"
         ordering = ["-created"]
         permissions = [
+            ("basic_access", "Can access Auto SRP"),
             ("manage",  "Can manage Auto SRP settings"),
             ("submit",  "Can submit Auto SRP requests"),
             ("review",  "Can review Auto SRP batches"),
