@@ -8,7 +8,7 @@ class Command(BaseCommand):
     help = "Preloads common ship and module types from ESI."
 
     def handle(self, *args, **kwargs):
-        call_command("eveuniverse_load_data map")
+        call_command("eveuniverse_load_data", "map")
         call_command(
             "eveuniverse_load_types",
             "autosrp",
