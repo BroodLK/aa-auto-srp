@@ -1,6 +1,6 @@
 """Initialize the app"""
 
-__version__ = "0.0.9"
+__version__ = "0.0.10"
 __title__ = "AA Auto SRP"
 __url__ = "https://github.com/BroodLK/aa-auto-srp"
 __app_name_ua__ = "aa-auto-srp"

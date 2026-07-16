@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 import json
 import re
 import requests
@@ -108,8 +108,8 @@ class SubmissionForm(forms.ModelForm):
         if dt is None:
             return None
         if timezone.is_naive(dt):
-            return timezone.make_aware(dt, timezone.utc)
-        return dt.astimezone(timezone.utc)
+            return timezone.make_aware(dt, dt_timezone.utc)
+        return dt.astimezone(dt_timezone.utc)
 
     def clean_systems(self):
         raw = (self.data.get("systems") or "").strip()
@@ -130,7 +130,7 @@ class SubmissionForm(forms.ModelForm):
         system_id = int(m.group("sid"))
         stamp = m.group("stamp")
         start_at = datetime.strptime(stamp, "%Y%m%d%H%M")
-        start_at = timezone.make_aware(start_at, timezone.utc)
+        start_at = timezone.make_aware(start_at, dt_timezone.utc)
         try:
             hours = int(self.cleaned_data.get("time_window_hours") or hours_default)
         except Exception:
@@ -193,13 +193,13 @@ class SubmissionForm(forms.ModelForm):
                     iv = int(val)
                     if iv > 10_000_000_000:
                         iv //= 1000
-                    dt_val = datetime.utcfromtimestamp(iv).replace(tzinfo=timezone.utc)
+                    dt_val = datetime.fromtimestamp(iv, tz=dt_timezone.utc)
                 except Exception:
                     try:
                         from django.utils.dateparse import parse_datetime
                         dt_parsed = parse_datetime(str(val))
                         if dt_parsed is not None:
-                            dt_val = dt_parsed.astimezone(timezone.utc) if timezone.is_aware(dt_parsed) else timezone.make_aware(dt_parsed, timezone.utc)
+                            dt_val = dt_parsed.astimezone(dt_timezone.utc) if timezone.is_aware(dt_parsed) else timezone.make_aware(dt_parsed, dt_timezone.utc)
                     except Exception:
                         dt_val = None
                 if dt_val is not None:
